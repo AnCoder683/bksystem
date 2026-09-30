@@ -1,0 +1,97 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// TODO(human): thiết kế RBAC + refresh token theo phân tích đã thống nhất.
+//
+// Cần định nghĩa các model sau (tên field có thể tự đặt, miễn hợp lý)
+//
+// model User {
+//   - các field cơ bản: id, email (unique), passwordHash, createdAt
+//   - quan hệ: roleId -> Role (1 user thuộc 1 role)
+//   - quan hệ: refreshTokens -> RefreshToken[] (1 user có nhiều refresh token, mỗi lần login/rotate tạo 1 record)
+// }
+model User {
+  id String @id @default(uuid())
+  email String @unique
+  passwordHash String
+  createdAt DateTime @default(now())
+
+  roleId String
+  role Role @relation(fields: [roleId], references: [id])
+
+  refreshTokens RefreshToken[]
+}
+//
+// model Role {
+//   - id, name (unique, vd "ADMIN" / "USER")
+//   - quan hệ n-n với Permission qua bảng nối RolePermission
+//   - quan hệ ngược: users -> User[]
+// }
+model Role {
+  id String @id  @default(uuid())
+  name String @unique
+
+  users User[]
+  rolePermissions RolePermission[]
+}
+//
+// model Permission {
+//   - id, action (unique, vd "room:create", "booking:cancel:own", "booking:cancel:any")
+//   - quan hệ n-n với Role qua RolePermission
+// }
+model Permission {
+  id String @id @default(uuid())
+  action String @unique
+  rolePermissions RolePermission[]
+}
+//
+// model RolePermission {
+//   - bảng nối: roleId + permissionId, đặt @@id([roleId, permissionId]) làm composite primary key
+//   - hint: xem cú pháp "implicit many-to-many" vs "explicit join table" trong docs Prisma —
+//     ở đây nên dùng explicit join table (khai báo hẳn model RolePermission) vì sau này có thể
+//     muốn thêm field như "grantedAt" vào bảng nối.
+// }
+model RolePermission {
+  roleId String
+  role Role @relation(fields: [roleId], references: [id])
+
+  permissionId String
+  permission Permission @relation(fields: [permissionId], references: [id])
+  @@id([roleId, permissionId])
+}
+//
+// model RefreshToken {
+//   - id, userId -> User, tokenHash (KHÔNG lưu token gốc, chỉ lưu hash), revoked (Boolean @default(false)),
+//     expiresAt, createdAt
+//   - hint: cân nhắc thêm field "replacedByTokenId" (tự tham chiếu tới RefreshToken khác) để
+//     truy vết được cả chuỗi rotation khi cần điều tra token bị đánh cắp — không bắt buộc, nhưng
+//     nếu thêm thì đây là self-relation, cần đặt tên relation tường minh (vd @relation("TokenRotation")).
+// }
+model RefreshToken {
+  id String @id @default(uuid())
+  tokenHash String @unique
+  revoked Boolean @default(false)
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+
+  userId String
+  user User @relation(fields: [userId], references: [id])
+
+  replacedByTokenId String? @unique
+  nextRefreshToken RefreshToken? @relation("RefreshTokenChain", fields: [replacedByTokenId], references: [id])
+
+  prevRefreshToken RefreshToken? @relation("RefreshTokenChain")
+}
+//
+// Sau khi viết xong, chạy: npx prisma migrate dev --name add_rbac_and_refresh_token

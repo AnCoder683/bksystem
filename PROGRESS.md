@@ -1,0 +1,63 @@
+# Tiến độ project — Booking System (Express + TS)
+
+## Stack đã chốt
+- Express 5 + TypeScript (CommonJS, không dùng ESM)
+- PostgreSQL (NeonDB) + Prisma 7 (bản stable, dùng driver adapter `@prisma/adapter-pg`)
+- Cấu trúc thư mục: feature-based (`src/features/{auth,rooms,bookings}`, `src/shared/{middlewares,types,utils}`, `src/config`)
+- Domain: đặt phòng họp (meeting room booking), có admin quản lý phòng
+
+## Đã hoàn thành
+- [x] Scaffold project: package.json, tsconfig.json, Prisma init, kết nối NeonDB test OK
+- [x] `src/index.ts` chạy được (`npm run dev`, `npm run build` đều pass)
+- [x] Phân tích xong (không code) — double-booking: chọn hướng transaction + row lock (`SELECT ... FOR UPDATE`) làm trước, exclusion constraint DB-level để sau
+- [x] Phân tích xong (không code) — JWT: access token ngắn hạn + refresh token có **rotation** (phát hiện token bị đánh cắp bằng cách revoke cả chuỗi khi refresh token cũ bị dùng lại)
+- [x] Phân tích xong (không code) — Role/Permission: chọn **RBAC đầy đủ** (không phải role enum đơn giản), lý do: muốn học sâu để show CV, chấp nhận trade-off phức tạp hơn cần thiết cho scope hiện tại
+
+## Đã hoàn thành (tiếp)
+- [x] `prisma/schema.prisma`: tự viết 5 model `User`, `Role`, `Permission`, `RolePermission` (bảng nối explicit, composite PK `@@id([roleId, permissionId])`), `RefreshToken` (self-relation `replacedByTokenId` để truy vết chuỗi rotation) — `npx prisma validate` pass
+
+## Đã hoàn thành (tiếp)
+- [x] Migration `20260923091947_add_rbac_and_refresh_token` đã chạy, 5 bảng RBAC + RefreshToken đã lên NeonDB
+
+## Đã học (2026-09-24) — nền tảng để xếp thứ tự build hạ tầng
+- [x] 4 khái niệm: piece, contract, implementation, dependency (đã recall đúng, đã có 5 thẻ Anki trong `Code::Concept`, tag `topic::architecture::modularity`, gồm 1 thẻ tổng hợp)
+- [ ] Đang làm: 5 piece hạ tầng theo thứ tự dependency: Response/Error format → custom Error class → asyncHandler → validate → errorHandler
+  - [x] **Piece 1: Response/Error format** xong (2026-09-25): `src/shared/types/api-response.ts` gồm 7 type (`ErrorCode`, `ErrorDetail`, `ApiErrorBody`, `PaginationMeta`, `ApiSuccessResponse<T>`, `ApiErrorResponse`, `ApiResponse<T>`), chọn hướng B (envelope). Đã học: literal type, union, discriminated union + narrowing, union vs enum. Đã tự viết lại file test từ trí nhớ và xóa. Có 1 thẻ Anki to (`Code::Skill`, tag `topic::api::response-format`, `project::booking-system`); ôn bằng cách tự tạo `test-api-response.ts`.
+  - [~] Piece 2: `AppError` (custom Error class), dùng `ErrorCode` và `ErrorDetail` từ Piece 1 — **code đã viết** ở `src/shared/utils/app-error.ts` (2026-09-25, `tsc --noEmit` pass). User đã tóm tắt đúng 3 điểm (Error thiếu field; 1 class + `code`, status suy ra từ bảng `Record<ErrorCode, number>`; lỗi lường trước vs bất ngờ → gửi message / trả chung chung + `console.error` ở server). Đã giảng 8 bước what/why. **Buổi sau (user yêu cầu):** nói lại từ đầu các bước + vì sao từng bước + vì sao có thứ tự đó (import type → bảng STATUS_BY_CODE → class → field readonly → constructor: super đầu tiên → name → statusCode → if details vì exactOptionalPropertyTypes), rồi để user hỏi tiếp. Chưa hỏi Anki cho `Record`/`AppError` (hỏi sau khi user ổn). Thẻ Anki `Record<K,V>` cần lưu ý: chỉ ép đủ key khi K là union literal hữu hạn.
+    - **Cập nhật 2026-09-26:** đã giảng lại 8 bước; user tự viết lại `src/shared/utils/test-app-error.ts` và sửa đúng (file luyện tập, tự xóa khi xong, cùng với `src/shared/types/test-api-response.ts`). Đã học sâu: vắng mặt vs có mặt-undefined, `exactOptionalPropertyTypes` (TS2412), narrowing. Đang học lại narrowing từng bước (xong: kiểu khai báo/hiện tại, typeof, truthiness, so sánh bằng, thoát sớm + gộp nhánh; chưa: instanceof, `in`, discriminated union, Array.isArray, `x is T`). Thẻ Anki dự kiến: `Record<K,V>` (A1), viết `AppError` (thẻ code to), vắng mặt vs undefined (C1), `exactOptionalPropertyTypes` (C2), narrowing (chờ học xong). Piece 2 coi như xong phần code; còn phần Anki.
+    - **Cập nhật 2026-09-26 (tối):** đã lưu 2 thẻ Anki: thẻ narrowing `if (details !== undefined)` (`Code::Concept`, tag `topic::typescript::narrowing`) và thẻ viết lại Piece 2 (`Code::Skill`, tag `topic::api::error-handling`). Đã tự viết lại `AppError` từ trí nhớ (chỉ quên `this.name`), user chọn mức **Good** nhưng chưa chấm được vì thẻ chưa đứng đầu hàng đợi Anki (`not at top of queue`), nên user tự chấm trong Anki. Chưa làm thẻ `Record<K,V>` (A1) và C1. **Piece 2 xong.** Còn việc: tự xóa `src/shared/utils/test-app-error.ts`.
+  - [~] Piece 3: `asyncHandler` — **đã quyết định (2026-09-27): hướng A, KHÔNG viết wrapper** vì Express 5 (`^5.2.1`) tự chuyển Promise reject sang `next(err)`; lý do tồn tại của `asyncHandler` (Express 4) đã mất, YAGNI. Đánh đổi: hành vi "ngầm", giảm bằng comment ở `errorHandler` + test T2 kiểm chứng. Lưu ý: chỉ bắt lỗi của Promise handler trả về, không bắt lỗi trong callback (`setTimeout`, `EventEmitter`); chưa có `errorHandler` nên lỗi hiện rơi vào handler mặc định (HTML + stack trace). User đã tóm tắt đúng vấn đề + lưu ý, phần "vì sao chọn A" do Claude nêu (user chưa tự diễn đạt) → nên làm thẻ Anki cho quyết định này. **Còn lại: thử nghiệm nhỏ** (route `async` cố tình ném lỗi, xem có tới `next(err)` không) rồi mới đánh dấu xong. Buổi sau làm.
+  - [x] Piece 4: `validate` xong (2026-09-27): `src/shared/middlewares/validate.ts`, cài `zod` (4.6.5). Chọn Zod (một nguồn sự thật: schema vừa kiểm tra runtime vừa sinh kiểu TS). `validate(schema)` là factory trả về middleware, dùng `safeParse(req.body)`, sai thì ném `AppError("INVALID_REQUEST", ..., details)` (không tự `res.json`, để chỉ `errorHandler` quyết định định dạng lỗi), đúng thì `req.body = result.data` rồi `next()`. User tự tóm tắt đúng (vấn đề, hình dạng, lỗi ném cho errorHandler, sửa 1 chỗ đổi định dạng ở đâu). Bản đầu Claude viết quá phức tạp (body/query/params + defineProperty), user phản hồi và đã đơn giản hóa còn chỉ `body` (YAGNI). User tự viết lại `test-validate.ts` (rebuild): lần đầu thiếu `req.body = result.data`, sau gợi ý đã sửa; hiểu **mass assignment** (client lén gửi `role: "admin"`, Zod bỏ trường thừa nên dòng này là chỗ chặn). Chưa chạy thật vì chưa có route/errorHandler. Khi mở rộng query/params: `req.query` Express 5 là getter, phải dùng `Object.defineProperty`. **Còn:** xóa `src/shared/middlewares/test-validate.ts`; chưa làm thẻ Anki Piece 4.
+  - [x] Piece 5: `errorHandler` xong phần code (2026-09-27): `src/shared/middlewares/error-handler.ts`, đã gắn `app.use(errorHandler)` cuối `src/index.ts` (sau route). Nhận ra bằng 4 tham số `(err, _req, res, _next)`, đặt sau mọi route. Phân loại bằng `err instanceof AppError` (KHÔNG dùng "có `code`" vì Prisma/Node cũng có `code`): lường trước → trả `statusCode` + body `ApiErrorResponse` (details chỉ khi có); bất ngờ → `console.error` + 500 `INTERNAL_ERROR` chung chung (không lộ chi tiết nội bộ). User tự tóm tắt đúng ý chung + phần lý do lỗi bất ngờ; câu "phân loại bằng gì" trả lời chưa đúng (nói "có code"), đã sửa. Chưa tự viết lại (rebuild), chưa chạy thật (`tsc --noEmit` pass). **Chưa xử lý (để sau, đã đề xuất):** JSON hỏng của `express.json()` đang rơi vào 500 thay vì 400; route không tồn tại (cần middleware 404); `res.headersSent`. **Anki:** đã tạo 3 thẻ (viết lại errorHandler, 4 tham số + vị trí, `instanceof` vs "có code"), thẻ về log/500 chung chung bỏ.
+  - **Hạ tầng + test nền tảng XONG (2026-09-30):** tách `src/app.ts` (tạo + export app, không biết cổng) / `src/server.ts` (listen, đọc env); script `dev`/`start` trỏ `server.ts`. Cài `supertest` + `@types/supertest`. `src/app.test.ts` có 4 test integration: `/health`; route `async` ném `AppError` không `asyncHandler` → `errorHandler` trả JSON 404 (**kiểm chứng Piece 3 xong**: Express 5 tự `next(err)`; gỡ `errorHandler` thì test đỏ vì body `{}`, status vẫn 404 do finalhandler đọc `err.statusCode` → Assert status một mình là yếu); `POST /users` với `validate` + `errorHandler`: body sai → 400 `INVALID_REQUEST` + `details[0].field`, body đúng → 201 và bỏ trường thừa (chặn mass assignment). `tsc --noEmit` + `vitest run` 9/9 pass. Đã xóa hết file luyện tập `test-*.ts`.
+  - **3 trường hợp biên `errorHandler` XONG (2026-09-30):** `notFound` (`src/shared/middlewares/not-found.ts`, đặt sau route, trước `errorHandler` trong `app.ts`) → JSON 404; JSON hỏng (`SyntaxError` + `type === "entity.parse.failed"`) → 400 `INVALID_REQUEST`; `res.headersSent` → `next(err)` (guard đứng đầu hàm). Đã tách test: `src/app.test.ts` (app thật) / `src/shared/middlewares/integration.test.ts` (app giả ghép middleware). `tsc --noEmit` + `vitest run` 12/12 pass. **Hạ tầng + test nền tảng hoàn tất, sẵn sàng sang GĐ3 Auth.** Quy ước test từ GĐ3: xem memory `feedback-test-workflow` (user nêu lời hứa, AI viết test, user phá code kiểm chứng).
+  - Lỗi `requireEnv` (TS2459) trước đây: đã hết, `tsc --noEmit` pass (2026-09-25)
+  - File `src/shared/types/test-api-response.ts` là bản user tự viết để ôn thẻ Anki, nhớ xóa khi xong (không phải code thật)
+
+## Kế hoạch học tới hết project (chốt 2026-09-26, cập nhật khi không còn phù hợp)
+
+**Ước tính thời gian (thô, ~28 piece):** ~30–37 ngày, tức 5–6 tuần nếu học 7 ngày/tuần, 7–8 tuần nếu 5 ngày/tuần. Nhịp thực tế đến giờ: Piece 1 ~1 ngày, Piece 2 ~2 ngày (do đi sâu TS narrowing + Anki). Tính lại ở mỗi mốc bên dưới.
+
+| GĐ | Nội dung | Ghi chú |
+|---|---|---|
+| 1. Hạ tầng | Piece 3 `asyncHandler` → 4 `validate` → 5 `errorHandler` | Câu hỏi kiến trúc: Express 5 đã tự chuyển promise reject sang `next(err)`, còn cần tự viết không? |
+| 2. Nền tảng test (3 piece) | T1: vì sao test, Arrange-Act-Assert, chạy test đầu tiên. T2: test `validate`/`errorHandler` bằng `req`/`res` giả. T3: mock/stub/spy + tách phần phụ thuộc DB | **Đã chốt Vitest (2026-09-27)** thay vì Jest: ít cấu hình với TS, API gần giống Jest (kiến thức chuyển được), đổi sau không đau; đánh đổi: Jest xuất hiện nhiều hơn trong tin tuyển dụng. Kiến thức mới hoàn toàn → theo mục 2 (phân tích → user tóm tắt → Claude viết mẫu + giảng what/why). Làm ngay sau hạ tầng, trước Auth |
+| 3. Tính năng | Auth (~7 piece: register, login, verify JWT, refresh rotation, logout, check permission, seed role/permission) → Rooms (~3) → Bookings (~5: transaction + lock, kiểm tra phòng trống, list, hủy) | Từ đây **mỗi piece xong có test luôn**. JWT/RBAC user đã nắm khái niệm → học nhanh hơn. Phần lặp lại: hỏi user rồi mới code thẳng |
+| 4. Docker (~4 piece) | D1: image/container/layer/volume, thực hành `docker run` với image có sẵn (chưa đụng project). D2: Dockerfile nhiều tầng. D3: `docker-compose` app + Postgres. D4: biến môi trường, `.dockerignore`, healthcheck, integration test với Postgres trong compose | Làm cuối, khi API đã ổn. **Cài Docker Desktop (Windows 11 Home → WSL2) sớm**, chạy thử `docker --version` |
+
+**Nhịp học mỗi ngày:** ôn Anki vài phút → học 1 piece theo quy trình → cuối buổi hỏi có làm thẻ Anki không (tối đa ~3 thẻ mới/ngày; thẻ code to chỉ cho piece khó).
+
+**3 chỗ dùng chế độ rebuild (user tự viết lại):** refresh token rotation; transaction + row lock chống double-booking; Dockerfile nhiều tầng. Chỗ khác chỉ cần hiểu what/why.
+
+**Mốc tính lại ước tính:** sau (1) hạ tầng, (2) test đầu tiên, (3) Auth, (4) Bookings.
+
+## Bước tiếp theo
+0. **(Cập nhật 2026-09-27 tối)** 5 piece hạ tầng đã xong phần code. Buổi sau: (a) ôn Anki (có 3 thẻ Piece 5 + 2 thẻ Piece 4 + thẻ cũ đến hạn); (b) sang **GĐ2 T1: nền tảng test** với Vitest, test đầu tiên = kiểm chứng Piece 3 (route `async` ném lỗi → `errorHandler` trả đúng JSON) và `validate` + `errorHandler` đầu-cuối; (c) tùy chọn: tính lại ước tính thời gian, cài Docker Desktop sớm (WSL2), xóa `src/shared/middlewares/test-validate.ts`. Việc treo: 3 trường hợp biên `errorHandler` (JSON hỏng → 400, route 404, `headersSent`); narrowing từ bước 7 (`in`, discriminated union, `Array.isArray`, `x is T`, `never`); thẻ Anki `Record<K,V>`, vắng mặt vs undefined, "vì sao không viết asyncHandler ở Express 5", "vì sao validate ném lỗi", mass assignment.
+1. Thiết kế (phân tích trước, không code) luồng auth: register/login → cấp access + refresh token
+2. Viết middleware auth (verify JWT) + middleware check permission (đặt ở `src/shared/middlewares`)
+3. Quay lại thiết kế `Room` + `Booking` schema, xử lý double-booking (transaction + lock)
+
+## Lưu ý môi trường
+- `.env` đã có `DATABASE_URL` (NeonDB), `JWT_SECRET` (đang để giá trị dev tạm, cần đổi trước khi deploy thật), `PORT`
+- Prisma 7 CLI tự tạo `.claude/skills`, `.agents/skills`, `.windsurf/skills`, `skills-lock.json` — đã gitignore, không phải code của project
+- Chưa `git init` — project hiện chưa có version control
