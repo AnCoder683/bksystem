@@ -9,6 +9,8 @@ import type { ErrorCode, ErrorDetail } from "../types/api-response";
 // đủ MỌI code: thêm code mới vào ErrorCode mà quên dòng ở đây thì TS báo lỗi lúc build.
 const STATUS_BY_CODE: Record<ErrorCode, number> = {
   INVALID_REQUEST: 400,
+  UNAUTHORIZED: 401,
+  CONFLICT: 409,
   TOKEN_EXPIRED: 401,
   TOKEN_INVALID: 401,
   FORBIDDEN: 403,

@@ -9,6 +9,8 @@
 // Bảng mã chung với FE: mỗi code ứng với một hành động khác nhau của FE.
 export type ErrorCode =
   | "INVALID_REQUEST" // sai dữ liệu đầu vào, kèm details -> FE tô đỏ từng ô
+  | "UNAUTHORIZED" // sai thông tin đăng nhập (email/mật khẩu) -> FE báo lỗi ở form login
+  | "CONFLICT" // xung đột với dữ liệu đã có (vd email đã đăng ký)
   | "TOKEN_EXPIRED" // access token hết hạn -> FE dùng refresh token xin token mới
   | "TOKEN_INVALID" // token sai/bị thu hồi -> FE bắt đăng nhập lại
   | "FORBIDDEN" // đã đăng nhập nhưng không đủ quyền
