@@ -1,17 +1,16 @@
 import { z } from "zod";
 
-// ISO 8601 bắt buộc có múi giờ (vd 2026-10-05T09:00:00+07:00), rồi đổi thành Date.
+// Bắt buộc có múi giờ (Z hoặc +07:00) để không hiểu nhầm giờ địa phương; transform sang Date cho service.
 const isoDateTime = z.iso.datetime({ offset: true }).transform((s) => new Date(s));
 
 export const createBookingSchema = z
   .object({
-    roomId: z.string().min(1),
+    roomId: z.uuid(),
     startTime: isoDateTime,
     endTime: isoDateTime,
   })
-  // Khoảng nửa mở [start, end): end phải lớn hơn hẳn start.
   .refine((data) => data.endTime > data.startTime, {
-    message: "endTime phải sau startTime",
+    message: "Giờ kết thúc phải sau giờ bắt đầu",
     path: ["endTime"],
   })
   .refine((data) => data.startTime > new Date(), {

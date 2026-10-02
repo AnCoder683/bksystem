@@ -11,6 +11,23 @@ import { RequestHandler } from "express";
 import { prisma } from "../../config/prisma";
 import { AppError } from "../utils/app-error";
 
+// Tách riêng để service dùng lại (vd huỷ booking: không phải chủ thì hỏi có quyền "booking:cancel:any" không).
+// Để DB trả lời có/không (`some` -> EXISTS trong SQL), không kéo cả danh sách quyền về.
+// User bị xoá (token còn hạn) cũng ra 0 -> false.
+export const hasPermission = async (userId: string, action: string): Promise<boolean> => {
+  const count = await prisma.user.count({
+    where: {
+      id: userId,
+      role: {
+        rolePermissions: {
+          some: { permission: { action } },
+        },
+      },
+    },
+  });
+  return count > 0;
+};
+
 // Factory: `action` được closure giữ lại, mỗi route tạo một middleware với quyền riêng.
 export const requirePermission = (action: string): RequestHandler => {
   return async (req, _res, next) => {
@@ -19,20 +36,7 @@ export const requirePermission = (action: string): RequestHandler => {
       throw new AppError("UNAUTHORIZED", "Vui lòng đăng nhập");
     }
 
-    // Để DB trả lời có/không (`some` -> EXISTS trong SQL), không kéo cả danh sách quyền về.
-    // User bị xoá (token còn hạn) cũng ra 0 -> rơi vào 403, không cần nhánh null riêng.
-    const count = await prisma.user.count({
-      where: {
-        id: req.user.id,
-        role: {
-          rolePermissions: {
-            some: { permission: { action } },
-          },
-        },
-      },
-    });
-
-    if (count === 0) {
+    if (!(await hasPermission(req.user.id, action))) {
       throw new AppError("FORBIDDEN", "Bạn không có quyền thực hiện thao tác này");
     }
 
