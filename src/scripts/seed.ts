@@ -6,8 +6,13 @@ import { prisma } from "../config/prisma";
 
 // Nguồn sự thật cho RBAC: role nào có permission nào. Thêm quyền mới = thêm dòng rồi chạy lại seed.
 const ROLE_PERMISSIONS: Record<string, string[]> = {
-  USER: ["room:read"],
-  ADMIN: ["room:read", "room:create", "room:update", "room:delete"],
+  // own = chỉ booking của mình (service kiểm tra ownership), any = của bất kỳ ai.
+  USER: ["room:read", "booking:create", "booking:read:own", "booking:cancel:own"],
+  ADMIN: [
+    "room:read", "room:create", "room:update", "room:delete",
+    "booking:create", "booking:read:own", "booking:cancel:own",
+    "booking:read:any", "booking:cancel:any",
+  ],
 };
 
 async function main() {

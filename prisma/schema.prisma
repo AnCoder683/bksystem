@@ -22,16 +22,18 @@ datasource db {
 //   - quan hệ: refreshTokens -> RefreshToken[] (1 user có nhiều refresh token, mỗi lần login/rotate tạo 1 record)
 // }
 model User {
-  id String @id @default(uuid())
-  email String @unique
+  id           String   @id @default(uuid())
+  email        String   @unique
   passwordHash String
-  createdAt DateTime @default(now())
+  createdAt    DateTime @default(now())
 
   roleId String
-  role Role @relation(fields: [roleId], references: [id])
+  role   Role   @relation(fields: [roleId], references: [id])
 
   refreshTokens RefreshToken[]
+  bookings      Booking[]
 }
+
 //
 // model Role {
 //   - id, name (unique, vd "ADMIN" / "USER")
@@ -39,22 +41,24 @@ model User {
 //   - quan hệ ngược: users -> User[]
 // }
 model Role {
-  id String @id  @default(uuid())
+  id   String @id @default(uuid())
   name String @unique
 
-  users User[]
+  users           User[]
   rolePermissions RolePermission[]
 }
+
 //
 // model Permission {
 //   - id, action (unique, vd "room:create", "booking:cancel:own", "booking:cancel:any")
 //   - quan hệ n-n với Role qua RolePermission
 // }
 model Permission {
-  id String @id @default(uuid())
-  action String @unique
+  id              String           @id @default(uuid())
+  action          String           @unique
   rolePermissions RolePermission[]
 }
+
 //
 // model RolePermission {
 //   - bảng nối: roleId + permissionId, đặt @@id([roleId, permissionId]) làm composite primary key
@@ -64,12 +68,14 @@ model Permission {
 // }
 model RolePermission {
   roleId String
-  role Role @relation(fields: [roleId], references: [id])
+  role   Role   @relation(fields: [roleId], references: [id])
 
   permissionId String
-  permission Permission @relation(fields: [permissionId], references: [id])
+  permission   Permission @relation(fields: [permissionId], references: [id])
+
   @@id([roleId, permissionId])
 }
+
 //
 // model RefreshToken {
 //   - id, userId -> User, tokenHash (KHÔNG lưu token gốc, chỉ lưu hash), revoked (Boolean @default(false)),
@@ -79,20 +85,21 @@ model RolePermission {
 //     nếu thêm thì đây là self-relation, cần đặt tên relation tường minh (vd @relation("TokenRotation")).
 // }
 model RefreshToken {
-  id String @id @default(uuid())
-  tokenHash String @unique
-  revoked Boolean @default(false)
+  id        String   @id @default(uuid())
+  tokenHash String   @unique
+  revoked   Boolean  @default(false)
   createdAt DateTime @default(now())
   expiresAt DateTime
 
   userId String
-  user User @relation(fields: [userId], references: [id])
+  user   User   @relation(fields: [userId], references: [id])
 
-  replacedByTokenId String? @unique
-  nextRefreshToken RefreshToken? @relation("RefreshTokenChain", fields: [replacedByTokenId], references: [id])
+  replacedByTokenId String?       @unique
+  nextRefreshToken  RefreshToken? @relation("RefreshTokenChain", fields: [replacedByTokenId], references: [id])
 
   prevRefreshToken RefreshToken? @relation("RefreshTokenChain")
 }
+
 //
 // Sau khi viết xong, chạy: npx prisma migrate dev --name add_rbac_and_refresh_token
 
@@ -103,4 +110,33 @@ model Room {
   // Soft delete: DELETE chỉ đặt false, giữ dòng lại để lịch sử Booking sau này không mất phòng.
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
+
+  bookings Booking[]
+}
+
+// Huỷ = đổi status (giữ lịch sử), không xoá dòng.
+// Mọi query kiểm tra trùng giờ PHẢI lọc status = CONFIRMED, nếu không booking đã huỷ vẫn chặn phòng.
+enum BookingStatus {
+  CONFIRMED
+  CANCELLED
+}
+
+model Booking {
+  id        String        @id @default(uuid())
+  // Khoảng nửa mở [startTime, endTime): 9h-10h và 10h-11h không tính là trùng.
+  startTime DateTime      @db.Timestamptz
+  endTime   DateTime      @db.Timestamptz
+  status    BookingStatus @default(CONFIRMED)
+  createdAt DateTime      @default(now())
+
+  roomId String
+  room   Room   @relation(fields: [roomId], references: [id])
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id])
+
+  // Query kiểm tra trùng luôn lọc theo phòng trước, rồi theo thời gian.
+  @@index([roomId, startTime])
+  // "Booking của tôi".
+  @@index([userId])
 }
