@@ -95,3 +95,12 @@ model RefreshToken {
 }
 //
 // Sau khi viết xong, chạy: npx prisma migrate dev --name add_rbac_and_refresh_token
+
+model Room {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  capacity  Int
+  // Soft delete: DELETE chỉ đặt false, giữ dòng lại để lịch sử Booking sau này không mất phòng.
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+}
